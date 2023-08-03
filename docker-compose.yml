@@ -1,0 +1,76 @@
+# this docker-compose image breaks when you attempt to mount the mongo-db
+version: '3'
+services:
+  db-admin:
+    image: mongo-express
+    container_name: cfsd-db-admin
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=admin
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=admin
+      - ME_CONFIG_MONGODB_PORT=27017
+      - ME_CONFIG_MONGODB_SERVER=db
+    ports:
+      - 8081:8081
+    depends_on:
+      - db
+    # https://github.com/mongo-express/mongo-express-docker/issues/39
+    # Bug with mongo-express where it will fire too early on mounted dbs
+    # entrypoint:
+    #   [sh, -c, 'sleep 10s && tini -- /docker-entrypoint.sh mongo-express']
+  db:
+    image: mongo:latest
+    container_name: cfsd-db
+    # restart: always
+    # volumes:
+    #   - ./db:/data/db
+    command: mongod
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=admin
+      - MONGO_INITDB_DATABASE=animals
+    ports:
+      - 27017
+    # https://github.com/docker/compose/issues/4950
+    # for some reason this is breaking
+    # ports:
+    # - 27017:27017
+  nginx:
+    # restart: always
+    image: cfsd-nginx
+    container_name: cfsd-nginx
+    build:
+      dockerfile: Dockerfile
+      context: ./nginx
+    depends_on:
+      - client
+      - api
+    ports:
+      - '8080:80'
+  api:
+    image: cfsd-api
+    container_name: cfsd-api
+    build:
+      dockerfile: Dockerfile.dev
+      context: ./api
+    depends_on:
+      - db
+    volumes:
+      - /app/node_modules
+      - ./api:/app
+    environment:
+      - PORT=3001
+      - MONGO_URI=mongodb://db:27017
+      - MONGO_USER=admin
+      - MONGO_PASSWORD=admin
+      - MONGO_DATABASE=animals
+    #   - REDIS_HOST=redis
+    #   - REDIS_PORT=6379
+  client:
+    image: cfsd-client
+    container_name: cfsd-client
+    build:
+      dockerfile: Dockerfile.dev
+      context: ./client
+    volumes:
+      - /app/node_modules
+      - ./client:/app
